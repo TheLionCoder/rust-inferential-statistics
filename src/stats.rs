@@ -1,4 +1,6 @@
-use statrs::distribution::{ContinuousCDF, StudentsT};
+use std::collections::{HashMap, HashSet};
+
+use statrs::distribution::{ChiSquared, ContinuousCDF, StudentsT};
 use statrs::statistics::Statistics;
 
 pub(crate) fn t_test_independent(sample1: &[f64], sample2: &[f64]) -> (f64, f64, f64) {
@@ -22,4 +24,72 @@ pub(crate) fn t_test_independent(sample1: &[f64], sample2: &[f64]) -> (f64, f64,
     let dist = StudentsT::new(0.0, 1.0, df).unwrap();
     let p_value = 2.0 * (1.0 - dist.cdf(t_stat.abs()));
     (t_stat, df, p_value)
+}
+
+pub(crate) fn chi_square_test(contingency_table: HashMap<(String, String), usize>) -> (f64, f64) {
+    // Extract unique job tables and experience levels
+    let mut unique_job_titles = HashSet::new();
+    let mut unique_experience_levels = HashSet::new();
+
+    for (job, experience_lvl) in contingency_table.keys() {
+        unique_job_titles.insert(job.clone());
+        unique_experience_levels.insert(experience_lvl.clone());
+    }
+
+    let unique_job_titles_vec = unique_job_titles.into_iter().collect::<Vec<_>>();
+    let unique_experience_levels_vec = unique_experience_levels.into_iter().collect::<Vec<_>>();
+
+    let mut observed = Vec::new();
+    let mut expected = Vec::new();
+
+    let total_count = contingency_table.values().sum::<usize>();
+
+    for job in &unique_job_titles_vec {
+        for exp in &unique_experience_levels_vec {
+            let observed_count = *contingency_table
+                .get(&(job.clone(), exp.clone()))
+                .unwrap_or(&0);
+            observed.push(observed_count as f64);
+
+            // Calculate marginals totals
+            let row_total = unique_experience_levels_vec
+                .iter()
+                .map(|e| {
+                    *contingency_table
+                        .get(&(job.clone(), e.clone()))
+                        .unwrap_or(&0)
+                })
+                .sum::<usize>();
+            let column_total = unique_job_titles_vec
+                .iter()
+                .map(|j| {
+                    *contingency_table
+                        .get(&(j.clone(), exp.clone()))
+                        .unwrap_or(&0)
+                })
+                .sum::<usize>();
+
+            let expected_count = (row_total as f64) * (column_total as f64) / (total_count as f64);
+            expected.push(expected_count);
+        }
+    }
+
+    // Calculate chi-square statistic
+    let chi_square_stat = observed
+        .iter()
+        .zip(expected.iter())
+        .map(|(o, e)| {
+            if *e != 0.0 {
+                (*o - *e).powi(2) / *e
+            } else {
+                0.0
+            }
+        })
+        .sum::<f64>();
+    // Degrees of freedom
+    let df = (unique_job_titles_vec.len() - 1) * (unique_experience_levels_vec.len() - 1);
+    // P-value
+    let dist = ChiSquared::new(df as f64).unwrap();
+    let p_value = 1.0 - dist.cdf(chi_square_stat);
+    (chi_square_stat, p_value)
 }
