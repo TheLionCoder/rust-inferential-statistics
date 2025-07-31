@@ -93,3 +93,33 @@ pub(crate) fn chi_square_test(contingency_table: HashMap<(String, String), usize
     let p_value = 1.0 - dist.cdf(chi_square_stat);
     (chi_square_stat, p_value)
 }
+
+pub(crate) fn paired_t_test(sample1: &[f64], sample2: &[f64]) -> Option<(f64, f64, f64)> {
+    if sample1.len() != sample2.len() || sample2.len() < 2 {
+        return None;
+    }
+
+    let n = sample1.len() as f64;
+    let (sum_diff, sum_sq_diff) = sample1
+        .iter()
+        .zip(sample2)
+        .map(|(x, y)| x - y)
+        .fold((0.0, 0.0), |(sum, sum_sq), diff| {
+            (sum + diff, sum_sq + diff.powi(2))
+        });
+    let mean_diff = sum_diff / n;
+    let variance = (sum_sq_diff - sum_diff.powi(2) / n) / (n - 1.0);
+    let std_diff = variance.sqrt();
+
+    let std_error = std_diff / n.sqrt();
+    let t_stat = if std_error > 0.0 {
+        mean_diff / std_error
+    } else {
+        f64::INFINITY
+    };
+    let df = n - 1.0;
+
+    let dist = StudentsT::new(0.0, 1.0, df).unwrap();
+    let p_value = 2.0 * (1.0 - dist.cdf(t_stat.abs()));
+    Some((t_stat, df, p_value))
+}
